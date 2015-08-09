@@ -1,0 +1,303 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Text;
+using System.Threading.Tasks;
+using System.Drawing;
+using System.Diagnostics;
+
+namespace PhysicsEngine
+{
+    class GameEngine
+    {
+        public struct pair{
+            public pair(PhysicsBody A, PhysicsBody B, String id)
+            {
+                this.A = A;
+                this.B = B;
+                this.id = id;
+            }
+            public String id;
+            public PhysicsBody A;
+            public PhysicsBody B;
+        }
+
+        public bool add = false;
+        public PhysicsBody next = null;
+        //DESTROY POLYGONS WHEN LNEAVE SCREEN******
+
+        //PHYSICS TIMER
+        Stopwatch physics = new Stopwatch();
+        //LIST OF PHYSICS BOXES
+        public List<PhysicsBody> boxes;
+
+        public List<pair> pairs;
+       // public List<pair> unique;
+
+        //GRAPHICS HANDLER
+        public Graphics handle;
+        Thread renderThread;
+        public GameEngine(Graphics g)
+        {
+            this.handle = g;
+        }
+
+        public void init()
+        {
+            //RENDERING THREAD
+            renderThread = new Thread(new ThreadStart(render));
+            renderThread.Start();
+            
+            //POPULATE SANDBOX
+            boxes = new List<PhysicsBody>();
+            pairs = new List<pair>();
+            Random rand = new Random();
+
+            boxes.Add(new PhysicsBody(new Poly(new PointF[] { new PointF(300, 100), new PointF(350, 50), new PointF(425, 75), new PointF(450, 150), new PointF(350, 200), new PointF(325, 175) }), 1, "BOX1"));
+           
+            boxes.Add(new PhysicsBody(new Poly(new PointF[] { new PointF(100, 600), new PointF(900, 600), new PointF(900, 650), new PointF(100, 650) }), 0, "Ground2"));
+            boxes.Add(new PhysicsBody(new Poly(new PointF[] { new PointF(300, 500), new PointF(500, 600), new PointF(300, 600) }), 0, "Ground3"));
+          
+
+            
+            physics.Start();
+
+        
+        }
+        
+        public void colCheck(Graphics g, List<pair> pa)
+        {
+            foreach (pair BoxPair in pa) { 
+                float a, b; int aIn, bIn;
+                a = b = aIn = bIn = 0;
+                int VA, VB;
+                VA = VB = 0;
+
+                if (collision(BoxPair.A.rig.polygon, BoxPair.B.rig.polygon, ref aIn, ref a, ref bIn, ref b, ref VA, ref VB)&&(BoxPair.A.mass.inv_m != 0 || BoxPair.B.mass.inv_m != 0))
+                {
+
+                    Vector2 faceNormalA =BoxPair.B.rig.polygon.faceNormals[bIn];
+                    Vector2 vertexA = new Vector2(BoxPair.A.rig.polygon.points[VA]);
+                    Vector2 faceNormalB = BoxPair.A.rig.polygon.faceNormals[aIn];
+                    Vector2 vertexB = new Vector2(BoxPair.B.rig.polygon.points[VB]);
+
+                    PhysicsBody A = BoxPair.A;
+                    PhysicsBody B = BoxPair.B;
+
+                    bool inA = PointInPolygon(new PointF(vertexB.x, vertexB.y), A.rig.polygon);
+                    bool inB = PointInPolygon(new PointF(vertexA.x, vertexA.y), B.rig.polygon);
+                    Vector2 colVertex = inA ? vertexB : vertexA;
+                    Vector2 colNormal = inA ? faceNormalB : faceNormalA;
+                    Vector2 relVel = inA ? (B.rig.veloctity.subtractR(A.rig.veloctity)) : (A.rig.veloctity.subtractR(B.rig.veloctity));
+                    float velAlongNormal = relVel.dot(colNormal);
+
+                    if (velAlongNormal < 0)
+                    {
+                       
+                        Vector2 contactA = new Vector2(A.rig.polygon.rVector(colVertex)).addR(A.rig.polygon.cent);
+                        Vector2 contactB = new Vector2(B.rig.polygon.rVector(colVertex)).addR(B.rig.polygon.cent);
+
+                        Vector2 cA = new Vector2(A.rig.polygon.rVector(colVertex));
+                        Vector2 cB = new Vector2(B.rig.polygon.rVector(colVertex));
+                        float impulse = -((1 + A.mass.restitution) * (velAlongNormal)) / ((A.mass.inv_m + B.mass.inv_m) + (float)Math.Pow((cA.dot(colNormal) * A.mass.InertiaInv), 2) + (float)Math.Pow((cB.dot(colNormal) * B.mass.InertiaInv), 2));
+
+                        Vector2 imp = colNormal.dot(impulse);
+                        imp = inA ? imp.negative() : imp;
+                        colNormal = inA ? colNormal.negative() : colNormal;
+                        
+                        g.DrawLine(Pens.DeepPink, (new Vector2(contactA.x, contactA.y - 10)).toPoint(), (new Vector2(contactA.x, contactA.y + 10)).toPoint());
+                        g.DrawLine(Pens.LightSteelBlue, (new Vector2(contactB.x, contactB.y - 10)).toPoint(), (new Vector2(contactB.x, contactB.y + 10)).toPoint());
+                       
+                        A.resolve(imp, new Vector2(A.rig.polygon.rVector(colVertex)), colNormal.normalize().negative(), B, a);
+                        B.resolve(imp.negative(), new Vector2(B.rig.polygon.rVector(colVertex)), colNormal.normalize(), A, b);
+                        
+                    }
+                }
+                
+                
+            }
+            if (add)
+            {
+                boxes.Add(next);
+                add = false;
+            }
+      
+        }
+
+
+        bool PointInPolygon(PointF point, Poly polygon)
+        {
+            PointF[] points = polygon.points;
+            int i, j, nvert = points.Length;
+            bool c = false;
+
+            for (i = 0, j = nvert - 1; i < nvert; j = i++)
+            {
+                if (((points[i].Y <= point.Y) != (points[j].Y <= point.Y)) &&
+                    (point.X >= (points[j].X - points[i].X) * (point.Y - points[i].Y) / (points[j].Y - points[i].Y) + points[i].X)
+                  )
+                    c = !c;
+            }
+           
+            return c;
+        }
+
+        bool collision(Poly A, Poly B, ref int aIn, ref float a, ref int bIn, ref float b,ref int VertexA,ref int VertexB)
+        {
+            
+            aIn = 0;
+            a = FindAxisLeastPenetration(ref aIn, A, B,ref VertexB);
+            
+            if (a > 0.0)
+            {
+                
+                return false;
+            }
+
+            
+            bIn = 0;
+            b = FindAxisLeastPenetration(ref bIn, B, A,ref VertexA);
+            if (b > 0.0)
+            {
+               
+                return false;
+            }
+
+           
+
+            return true;
+        }
+
+        
+
+
+        float FindAxisLeastPenetration(ref int faceIndex, Poly A, Poly B,ref int u)
+        {
+            float bestDistance = -float.MaxValue;
+            int bestIndex = 0;
+
+            for (int i = 0; i < A.points.Length; i++)
+            {
+                Vector2 n = A.faceNormals[i];
+                //if (n != null) n = n.normalize();
+                if (n != null)
+                {
+                    //VIndex returns vertex that has crossed bounds and hence negatively penatrated the facenormal;
+                    int VIndex = 0;
+                    Vector2 s = B.GetSupport(n.negative(),ref VIndex);
+                    //Console.WriteLine(VIndex);
+                    Vector2 v = new Vector2(A.points[i]);
+                    
+                    
+                    float d = n.dot((s.subtractR(v)));
+
+                    if (d > bestDistance)
+                    {
+                        u = VIndex;
+                        bestDistance = d;
+                        bestIndex = i;
+                    }
+                }
+                
+            }
+
+            faceIndex = bestIndex;
+            
+            return bestDistance;
+        }
+        
+
+        public void Logic(Graphics g)
+        {
+            pairs.Clear();
+            for (int i = 0; i < boxes.Count; i++)
+            {
+
+                for (int j = 0; j < boxes.Count; j++)
+                {
+                    if (i == j) continue;
+                    String first = boxes[i].ToString().CompareTo(boxes[j].ToString()) > 0 ? boxes[i].ToString() : boxes[j].ToString();
+                    String second = boxes[i].ToString().CompareTo(boxes[j].ToString()) > 0 ? boxes[j].ToString() : boxes[i].ToString();
+                    pairs.Add(new pair(boxes[i], boxes[j], first+second));
+                }
+            }
+            //unique.Clear();
+            for (int i = pairs.Count - 1; i >= 0; i--)
+            {
+               for (int j = pairs.Count - 1; j >= 0; j--)
+               {
+                   if (i == j) continue;
+                   if (pairs[i].id == pairs[j].id)
+                   {
+                       pairs.RemoveAt(i);
+                       break;
+                   }
+               
+            }
+            }
+
+                colCheck(g, pairs);
+        }
+
+        
+
+        //ABORT THREAD
+        public void stop()
+        {
+            renderThread.Abort();
+        }
+
+        
+        public void render()
+        {
+            //BENCHMARKING
+            const float fps = 100;
+            const float dt = 1 / fps;
+            float accumulator = 0;
+            float frameStart = physics.ElapsedMilliseconds*1000;
+
+            //SMOOTH NO FLICKER MOTION - SAVE BITMAP OF SCREEN
+            Bitmap frame = new Bitmap(Game.WIDTH, Game.HEIGHT);
+            Graphics frameGraphics = Graphics.FromImage(frame);
+
+            while (true)
+            {
+                float currentTime = physics.ElapsedMilliseconds * 1000;
+                //ACCUMALATOR
+                accumulator += currentTime - frameStart;
+                //Console.WriteLine(accumulator);
+                frameStart = currentTime;
+
+                if (accumulator > 0.2f)
+                    accumulator = 0.2f;
+
+                while (accumulator > dt)
+                {
+                    
+                    //UPDATE PHYSICS
+                    foreach (PhysicsBody box in boxes)
+                    {
+                        box.update(dt);
+                    }
+                    accumulator -= dt;
+
+                }
+
+                    //BACKGROUND
+                    frameGraphics.FillRectangle(Brushes.Black, 0, 0, Game.WIDTH, Game.HEIGHT);
+                    
+                    //ALL BOXES
+                    for (int k = 0; k < boxes.Count; k++)
+                    {
+                        boxes[k].paint(frameGraphics);
+                    }
+                    Logic(frameGraphics);
+                    //DRAW SAVED BITMAP
+                    handle.DrawImage(frame, 0, 0, Game.WIDTH, Game.HEIGHT);
+                    
+                
+            }
+        }
+    }
+}
