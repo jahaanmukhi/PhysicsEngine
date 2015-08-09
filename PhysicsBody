@@ -1,0 +1,107 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Drawing;
+using System.Threading.Tasks;
+
+namespace PhysicsEngine
+{
+    class PhysicsBody
+    {
+        public String name;
+        public const float p = 0.01f;
+           
+        public Vector2 gravity = new Vector2(0, 0.5f);
+        public struct RigidBody
+        {
+           public Vector2 veloctity;
+           public Vector2 acceleration;
+           public Vector2 position;
+
+           public Poly polygon;
+           public float angularVelocity;
+           public float torque; 
+
+        }
+
+        public struct Mass
+        {
+            public float restitution;
+            public float InertiaInv;
+            public float m;
+            public float inv_m;
+        }
+        public Mass mass;
+        public RigidBody rig;
+
+        public PhysicsBody(Poly polygon, int n, String name){
+            rig = new RigidBody();
+            rig.polygon = polygon;
+            rig.veloctity = new Vector2(0, 0);
+            rig.acceleration = n == 1 ? new Vector2(0, gravity.y) : new Vector2(0, 0);
+
+            rig.angularVelocity = 0;
+            rig.torque = n == 1 ? 0f : 0;
+            mass = new Mass();
+            mass.restitution = n == 1 ? 0f : 0f;
+            mass.m = n == 1 ? this.rig.polygon.calculateMass()*p : this.rig.polygon.calculateMass()*p;
+            mass.InertiaInv = n == 1 ? 1 / this.rig.polygon.calculateInertia(mass.m) : 0;
+            
+            
+            mass.inv_m = n == 1 ? 1/mass.m : 0;
+            rig.polygon.computeNormals();
+            this.name = name;
+
+            
+            
+        }
+
+        public void resolve(Vector2 imp, Vector2 contact, Vector2 n, PhysicsBody other, float depth)
+        {
+            this.rig.veloctity.add(imp.dot(this.mass.inv_m));
+            this.rig.angularVelocity += this.mass.InertiaInv*contact.cross2(imp)*20;
+            this.rig.angularVelocity *= 0.86f;
+            const float slop = 1f;
+            const float percent = 0.01f; // usually 20% to 80%
+            Vector2 correction = n.dot((Math.Abs(depth) - slop<=0?0:depth/ (this.mass.inv_m + other.mass.inv_m)) * percent);
+            this.rig.polygon.position(correction.dot(this.mass.inv_m));
+        }
+
+
+      
+
+        public float max(float a, float b)
+        {
+            return a > b ? a : b;
+        }
+
+
+        public void update(float dt)
+        {
+            
+            rig.polygon.computeNormals();
+            rig.position = rig.polygon.cent;
+            rig.veloctity.add(rig.acceleration.dot(dt));
+            rig.polygon.position(rig.veloctity.dot(dt));
+
+            rig.angularVelocity += rig.torque*(mass.InertiaInv)*dt;
+            rig.polygon.orientation(rig.angularVelocity * dt);
+            
+
+            
+            
+        }
+
+        public void paint(Graphics g)
+        {
+            rig.polygon.paint(g);
+        }
+
+        public override string ToString()
+        {
+            return this.name;
+        }
+
+    }
+}
