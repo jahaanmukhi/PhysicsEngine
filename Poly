@@ -1,0 +1,201 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Threading.Tasks;
+
+namespace PhysicsEngine
+{
+
+    class Poly
+    {
+        public const int maxVertex = 64;
+        public PointF[] points;
+        int count = 0;
+        public int vertex;
+        public Vector2 cent;
+        public Vector2[] faceNormals;
+        public Edge[] faces;
+
+        public Poly(int vertex)
+        {
+            points = new PointF[vertex];
+            this.Center();
+            this.vertex = vertex;
+            this.faceNormals = new Vector2[vertex];
+            this.faces = new Edge[vertex];
+        }
+
+        public Poly(PointF[] points)
+        {
+            this.points = points;
+            this.Center();
+            this.vertex = points.Length;
+            this.faceNormals = new Vector2[vertex];
+            this.faces = new Edge[vertex];
+        }
+
+        public void paint(Graphics g){
+            g.DrawPolygon(Pens.LemonChiffon, this.points);
+        }
+
+        public void computeNormals()
+        {
+            for (int i = 0; i < points.Length; ++i)
+            {
+                int y = i+1;
+                if (i + 1 >= points.Length) y = 0;
+                Vector2 face = new Vector2(points[i]).subtractR(new Vector2(points[y]));
+                Vector2 u = new Vector2(points[i]).addR(face.negative());
+                faces[i] = new Edge(new Vector2(points[i]), u);
+                faceNormals[i] = face.cross(1, face);
+                faceNormals[i] = faceNormals[i].normalize();
+            }
+        }
+
+        public float calculateMass()
+        {
+            float sum = 0;
+            for (int k = 0; k < points.Length; k++)
+            {
+                int y = k < points.Length - 1 ? k + 1 : 0;
+                Vector2 B = new Vector2(points[k]);
+                Vector2 C = new Vector2(points[y]);
+                Vector2 A = this.cent;
+
+                Vector2 baseSide = B.subtractR(C);
+                float b = Math.Abs((baseSide.magnitude()));
+
+                Vector2 height = baseSide.cross(1, baseSide.normalize());
+                Vector2 side = A.subtractR(B);
+                float h = Math.Abs(side.dot(height));
+
+                sum += 0.5f * b * h;
+            }
+            return sum;
+        }
+
+        public float calculateInertia(float mass)
+        {
+            float sum = 0;
+            for (int k = 0; k < points.Length ; k++)
+            {
+                int y = k < points.Length - 1 ? k + 1 : 0;
+                Vector2 B = new Vector2(points[k]);
+                Vector2 C = new Vector2(points[y]);
+                Vector2 A = this.cent;
+
+                Vector2 baseSide = B.subtractR(C);
+                float b = Math.Abs((baseSide.magnitude()));
+               
+                Vector2 height = baseSide.cross(1, baseSide.normalize());
+                Vector2 side = A.subtractR(B);
+                float h = Math.Abs(side.dot(height.normalize()));
+               
+                float a = Math.Abs(side.dot(baseSide.normalize()));
+
+               
+                float Inert = (1f / 36f) * (b * b * b * h - b * b * h * a + b * h * a * a + b * h * h * h);
+                Vector2 COM = (A.addR(B).addR(C)).dot(1 / 3f);
+               
+                float dist = (COM.subtractR(cent).magnitude());
+
+                sum += Inert + mass * dist * dist;
+            }
+            Console.WriteLine(sum);
+           
+            return Math.Abs(sum);
+        }
+
+        public PointF rVector(Vector2 point)
+        {
+            Vector2 r = point.subtractR(cent);
+            return new PointF(r.x, r.y);
+        }
+        
+
+
+        public Vector2 GetSupport( Vector2 dir , ref int VertexIndex)
+        {
+            float bestProjection = -float.MaxValue;
+            Vector2 bestVertex = new Vector2();
+ 
+             for(int i = 0; i < this.points.Length; ++i)
+             {
+                 Vector2 v = new Vector2(points[i]);
+                 float projection = v.dot(dir);
+ 
+                 if(projection > bestProjection)
+                 {
+                     VertexIndex = i;
+                  bestVertex = v;
+                  bestProjection = projection;
+                 }
+             }
+ 
+        return bestVertex;
+        }
+
+        public void position(Vector2 velocity)
+        {
+            for (int i = 0; i < points.Length; i++)
+            {
+                Vector2 current = new Vector2(points[i]);
+                Vector2 target = current.addR(velocity);
+                points[i] = new PointF(target.x, target.y);
+            }
+        }
+
+        public void orientation(float radians)
+        {
+
+        Vector2 origin = this.Center();
+            
+        Poly ret = new Poly(this.vertex);
+        for (int i = 0; i < points.Length; i++)
+        {
+            ret.Add(RotatePoint(new Vector2(points[i]), origin, radians));
+            
+        }
+        //Console.WriteLine("Done");
+        this.points = ret.points;
+        }
+
+        public Vector2 Center()
+        {
+        	Vector2 Centroid = new Vector2();
+            float sumX = 0;
+            float sumY = 0;
+            foreach(PointF pt in points){
+                sumX+=pt.X;
+                sumY+=pt.Y;
+            }
+            Centroid.x = sumX/points.Length;
+            Centroid.y = sumY/points.Length;
+            this.cent = Centroid;
+            return Centroid;
+            
+        }
+
+        private void Add(Vector2 vector)
+       {
+        	points[count] = new PointF(vector.x, vector.y);
+            count++;
+       }
+
+        
+
+        public Vector2 RotatePoint(Vector2 point, Vector2 origin, float angle)
+       {
+            Vector2 translated = point.subtractR(origin);
+            Vector2 rotated = new Vector2();
+            rotated.x = (float)(translated.x * Math.Cos(angle) - translated.y * Math.Sin(angle));
+            rotated.y = (float)(translated.x * Math.Sin(angle) +  translated.y * Math.Cos(angle));
+           
+            return rotated.addR(origin);
+       }
+
+    }
+}
