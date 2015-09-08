@@ -257,7 +257,6 @@ namespace PhysicsEngine
             float accumulator = 0;
             float frameStart = physics.ElapsedMilliseconds*1000;
 
-            //SMOOTH NO FLICKER MOTION - SAVE BITMAP OF SCREEN
             Bitmap frame = new Bitmap(Game.WIDTH, Game.HEIGHT);
             Graphics frameGraphics = Graphics.FromImage(frame);
 
